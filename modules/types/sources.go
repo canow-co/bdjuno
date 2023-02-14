@@ -40,6 +40,9 @@ import (
 	stakingsource "github.com/forbole/bdjuno/v4/modules/staking/source"
 	localstakingsource "github.com/forbole/bdjuno/v4/modules/staking/source/local"
 	remotestakingsource "github.com/forbole/bdjuno/v4/modules/staking/source/remote"
+	httpclient "github.com/tendermint/tendermint/rpc/client/http"
+	jsonrpcclient "github.com/tendermint/tendermint/rpc/jsonrpc/client"
+	cosmos_sdk_client "github.com/cosmos/cosmos-sdk/client"
 )
 
 type Sources struct {
@@ -113,11 +116,25 @@ func buildRemoteSources(cfg *remote.Details) (*Sources, error) {
 		return nil, fmt.Errorf("error while creating remote source: %s", err)
 	}
 
+	// create a jsonRPC client to use it for the Mint module
+	httpClient, err := jsonrpcclient.DefaultHTTPClient(cfg.RPC.Address)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating HTTPClient: %s", err)
+	}
+
+	rpcClient, err := httpclient.NewWithClient(cfg.RPC.Address, "/websocket", httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("error while creating client: %s", err)
+	}
+
+	context := cosmos_sdk_client.Context{Client: rpcClient}
+	//
+
 	return &Sources{
 		BankSource:     remotebanksource.NewSource(source, banktypes.NewQueryClient(source.GrpcConn)),
 		DistrSource:    remotedistrsource.NewSource(source, distrtypes.NewQueryClient(source.GrpcConn)),
 		GovSource:      remotegovsource.NewSource(source, govtypesv1.NewQueryClient(source.GrpcConn), govtypesv1beta1.NewQueryClient(source.GrpcConn)),
-		MintSource:     remotemintsource.NewSource(source, minttypes.NewQueryClient(source.GrpcConn)),
+		MintSource:     remotemintsource.NewSource(source, minttypes.NewQueryClient(context)),
 		SlashingSource: remoteslashingsource.NewSource(source, slashingtypes.NewQueryClient(source.GrpcConn)),
 		StakingSource:  remotestakingsource.NewSource(source, stakingtypes.NewQueryClient(source.GrpcConn)),
 	}, nil
